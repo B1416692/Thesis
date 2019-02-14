@@ -48,6 +48,16 @@ def get_data(train_ds, valid_ds, batch_size):
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
+def get_weights(model):
+    result = []
+    for name, param in model.named_parameters():
+        if 'weight' in name:
+            weights = torch.flatten(param)
+            for weight in weights:
+                weight = weight.item()
+                result.append(weight)
+    return result
+
 def fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs):
     print("Training...")
     print("#", "\t", "Loss")
@@ -70,6 +80,37 @@ def fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs):
 def accuracy(x, y):
     predictions = torch.argmax(x, dim=1)
     return (predictions == y).float().mean()
+
+# - Data visualization
+
+import numpy as np
+import scipy.special
+from bokeh.layouts import gridplot
+from bokeh.plotting import figure, show, output_file
+
+WEIGHT_DISITRBUTION_PLOT_WIDTH = 1250
+weight_distribution_plots = []
+
+def make_plot(title, hist, edges, x, x_label, y_label):
+    p = figure(title=title, tools='', background_fill_color="#fafafa")
+    p.quad(top=hist, bottom=0, left=edges[:-1], right=edges[1:], fill_color="steelblue", line_color="steelblue", alpha=1.0)
+
+    p.y_range.start = 0
+    p.xaxis.axis_label = x_label
+    p.yaxis.axis_label = y_label
+    p.grid.grid_line_color="white"
+    return p
+
+def plot_weight_distribution(model, resolution, title):
+    weights = get_weights(model)
+    minimum = min(weights)
+    maximum = max(weights)
+    
+    hist, edges = np.histogram(weights, density=True, bins=resolution)
+    x = np.linspace(minimum, maximum, resolution)
+
+    plot = make_plot("Weights distribution - " + title, hist, edges, x, "Weight", "Frequency")
+    weight_distribution_plots.append(plot)
 
 # - Define neural network structures
 
@@ -166,6 +207,7 @@ print("Model:", model)
 print("Number of parameters:", count_parameters(model))
 fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
 print("Accuracy:", (sum(accuracy(model(x), y) for x, y in valid_dl) / len(valid_dl)).item())
+plot_weight_distribution(model, WEIGHT_DISITRBUTION_PLOT_WIDTH, "FF")
 print("")
 
 # FF_KAF
@@ -177,6 +219,7 @@ print("Model:", model)
 print("Number of parameters:", count_parameters(model))
 fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
 print("Accuracy:", (sum(accuracy(model(x), y) for x, y in valid_dl) / len(valid_dl)).item())
+plot_weight_distribution(model, WEIGHT_DISITRBUTION_PLOT_WIDTH, "FF_KAF")
 print("")
 
 # CNN
@@ -188,6 +231,7 @@ print("Model:", model)
 print("Number of parameters:", count_parameters(model))
 fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
 print("Accuracy:", (sum(accuracy(model(x), y) for x, y in valid_dl) / len(valid_dl)).item())
+plot_weight_distribution(model, WEIGHT_DISITRBUTION_PLOT_WIDTH, "CNN")
 print("")
 
 # CNN_KAF
@@ -199,4 +243,9 @@ print("Model:", model)
 print("Number of parameters:", count_parameters(model))
 fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
 print("Accuracy:", (sum(accuracy(model(x), y) for x, y in valid_dl) / len(valid_dl)).item())
+plot_weight_distribution(model, WEIGHT_DISITRBUTION_PLOT_WIDTH, "CNN_KAF")
 print("")
+
+# Output plots
+output_file('weight_distribution.html', title="Weight distribution")
+show(gridplot(weight_distribution_plots, ncols=1, plot_width=WEIGHT_DISITRBUTION_PLOT_WIDTH, plot_height=400, toolbar_location=None))
