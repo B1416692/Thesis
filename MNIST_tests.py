@@ -58,6 +58,14 @@ def get(model, parameter_type):
                 result.append(parameter)
     return result
 
+def quantizationMethod1(element):
+    return round(element, 1)
+
+def quantize(model):
+    for layer in model.children():
+        if hasattr(layer, "weight"):
+            layer.weight.data.apply_(quantizationMethod1)  # apply_(function) only works with CPU tensors.
+
 def fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs):
     print("Training...")
     print("#", "\t", "Loss")
@@ -80,6 +88,9 @@ def fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs):
 def accuracy(x, y):
     predictions = torch.argmax(x, dim=1)
     return (predictions == y).float().mean()
+
+def testAccuracy(model, test_dl):
+    return (sum(accuracy(model(x), y) for x, y in test_dl) / len(test_dl)).item()
 
 # - Data visualization
 
@@ -207,10 +218,14 @@ epochs = 5  # How many epochs to train for.
 
 print("Model:", model)
 print("Number of parameters:", count_parameters(model))
+print("Accuracy before training:", testAccuracy(model, valid_dl))
 fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
-print("Accuracy:", (sum(accuracy(model(x), y) for x, y in valid_dl) / len(valid_dl)).item())
+print("Accuracy after training:", testAccuracy(model, valid_dl))
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF", "weight")
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF", "bias")
+quantize(model)
+print("Accuracy after quantization:", testAccuracy(model, valid_dl))
+plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF quantized", "weight")
 print("")
 
 # FF_KAF
@@ -220,10 +235,14 @@ opt = optim.SGD(model.parameters(), lr=lr, momentum=0.1)  # Optimizer.
 
 print("Model:", model)
 print("Number of parameters:", count_parameters(model))
+print("Accuracy before training:", testAccuracy(model, valid_dl))
 fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
-print("Accuracy:", (sum(accuracy(model(x), y) for x, y in valid_dl) / len(valid_dl)).item())
+print("Accuracy after training:", testAccuracy(model, valid_dl))
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF_KAF", "weight")
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF_KAF", "bias")
+quantize(model)
+print("Accuracy after quantization:", testAccuracy(model, valid_dl))
+plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF_KAF quantized", "weight")
 print("")
 
 # CNN
@@ -233,10 +252,14 @@ opt = optim.SGD(model.parameters(), lr=lr, momentum=0.9)  # Optimizer.
 
 print("Model:", model)
 print("Number of parameters:", count_parameters(model))
+print("Accuracy before training:", testAccuracy(model, valid_dl))
 fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
-print("Accuracy:", (sum(accuracy(model(x), y) for x, y in valid_dl) / len(valid_dl)).item())
+print("Accuracy after training:", testAccuracy(model, valid_dl))
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN", "weight")
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN", "bias")
+quantize(model)
+print("Accuracy after quantization:", testAccuracy(model, valid_dl))
+plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN quantized", "weight")
 print("")
 
 # CNN_KAF
@@ -246,10 +269,14 @@ opt = optim.SGD(model.parameters(), lr=lr, momentum=0.9)  # Optimizer.
 
 print("Model:", model)
 print("Number of parameters:", count_parameters(model))
+print("Accuracy before training:", testAccuracy(model, valid_dl))
 fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
-print("Accuracy:", (sum(accuracy(model(x), y) for x, y in valid_dl) / len(valid_dl)).item())
+print("Accuracy after training:", testAccuracy(model, valid_dl))
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN_KAF", "weight")
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN_KAF", "bias")
+quantize(model)
+print("Accuracy after quantization:", testAccuracy(model, valid_dl))
+plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN_KAF quantized", "weight")
 print("")
 
 # Output plots
