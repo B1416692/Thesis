@@ -65,6 +65,8 @@ def quantize(model):
     for layer in model.children():
         if hasattr(layer, "weight"):
             layer.weight.data.apply_(quantizationMethod1)  # apply_(function) only works with CPU tensors.
+        if hasattr(layer, "alpha"):
+            layer.alpha.data.apply_(quantizationMethod1)  # apply_(function) only works with CPU tensors.
 
 def fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs):
     print("Training...")
@@ -240,9 +242,11 @@ fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
 print("Accuracy after training:", testAccuracy(model, valid_dl))
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF_KAF", "weight")
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF_KAF", "bias")
+plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF_KAF", "alpha")
 quantize(model)
 print("Accuracy after quantization:", testAccuracy(model, valid_dl))
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF_KAF quantized", "weight")
+plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF_KAF quantized", "alpha")
 print("")
 
 # CNN
@@ -274,9 +278,11 @@ fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
 print("Accuracy after training:", testAccuracy(model, valid_dl))
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN_KAF", "weight")
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN_KAF", "bias")
+plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN_KAF", "alpha")
 quantize(model)
 print("Accuracy after quantization:", testAccuracy(model, valid_dl))
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN_KAF quantized", "weight")
+plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN_KAF quantized", "alpha")
 print("")
 
 # Output plots
