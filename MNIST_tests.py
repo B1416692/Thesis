@@ -45,29 +45,6 @@ def get_data(train_ds, valid_ds, batch_size):
         DataLoader(valid_ds, batch_size=batch_size * 2),
     )
 
-def count_parameters(model):
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-def get(model, parameter_type):
-    result = []
-    for name, param in model.named_parameters():
-        if parameter_type in name:
-            parameters = torch.flatten(param)
-            for parameter in parameters:
-                parameter = parameter.item()
-                result.append(parameter)
-    return result
-
-def quantizationMethod1(element):
-    return round(element, 1)
-
-def quantize(model):
-    for layer in model.children():
-        if hasattr(layer, "weight"):
-            layer.weight.data.apply_(quantizationMethod1)  # apply_(function) only works with CPU tensors.
-        if hasattr(layer, "alpha"):
-            layer.alpha.data.apply_(quantizationMethod1)  # apply_(function) only works with CPU tensors.
-
 def fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs):
     print("Training...")
     print("#", "\t", "Loss")
@@ -94,12 +71,31 @@ def accuracy(x, y):
 def testAccuracy(model, test_dl):
     return (sum(accuracy(model(x), y) for x, y in test_dl) / len(test_dl)).item()
 
+# - Quantization
+
+import quantization
+
+# TODO: Make quantizer selectable from parameter in quantize rather than hard-coded.
+def quantize(model, parameter_types):
+    if "weight" in parameter_types:
+        quantizer = quantization.AsymmetricLinearQuantizer(model, "weight", 31)
+        for layer in model.children():
+            if hasattr(layer, "weight"):
+                layer.weight.data.apply_(quantizer.quantize)  # apply_(function) only works with CPU tensors.
+    # TODO: Phugly. Find way to avoid these repetitions.
+    if "alpha" in parameter_types:
+        quantizer = quantization.AsymmetricLinearQuantizer(model, "alpha", 31)
+        for layer in model.children():
+            if hasattr(layer, "alpha"):
+                layer.alpha.data.apply_(quantizer.quantize)  # apply_(function) only works with CPU tensors.
+
 # - Data visualization
 
 import numpy as np
 import scipy.special
 from bokeh.layouts import gridplot
 from bokeh.plotting import figure, show, output_file
+import utilities
 
 DISITRBUTION_PLOT_WIDTH = 1250
 distribution_plots = {}
@@ -115,7 +111,7 @@ def make_plot(title, hist, edges, x, x_label, y_label):
     return p
 
 def plot_distribution(model, resolution, title, parameter_type):
-    values = get(model, parameter_type)
+    values = utilities.get(model, parameter_type)
     minimum = min(values)
     maximum = max(values)
     
@@ -219,13 +215,13 @@ train_dl, valid_dl = get_data(train_ds, valid_ds, batch_size)
 epochs = 5  # How many epochs to train for.
 
 print("Model:", model)
-print("Number of parameters:", count_parameters(model))
+print("Number of parameters:", utilities.count_parameters(model))
 print("Accuracy before training:", testAccuracy(model, valid_dl))
 fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
 print("Accuracy after training:", testAccuracy(model, valid_dl))
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF", "weight")
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF", "bias")
-quantize(model)
+quantize(model, ["weight"])
 print("Accuracy after quantization:", testAccuracy(model, valid_dl))
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF quantized", "weight")
 print("")
@@ -236,14 +232,14 @@ lr = 0.1  # Learning rate.
 opt = optim.SGD(model.parameters(), lr=lr, momentum=0.1)  # Optimizer.
 
 print("Model:", model)
-print("Number of parameters:", count_parameters(model))
+print("Number of parameters:", utilities.count_parameters(model))
 print("Accuracy before training:", testAccuracy(model, valid_dl))
 fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
 print("Accuracy after training:", testAccuracy(model, valid_dl))
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF_KAF", "weight")
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF_KAF", "bias")
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF_KAF", "alpha")
-quantize(model)
+quantize(model, ["weight", "alpha"])
 print("Accuracy after quantization:", testAccuracy(model, valid_dl))
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF_KAF quantized", "weight")
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF_KAF quantized", "alpha")
@@ -255,13 +251,13 @@ lr = 0.1  # Learning rate.
 opt = optim.SGD(model.parameters(), lr=lr, momentum=0.9)  # Optimizer.
 
 print("Model:", model)
-print("Number of parameters:", count_parameters(model))
+print("Number of parameters:", utilities.count_parameters(model))
 print("Accuracy before training:", testAccuracy(model, valid_dl))
 fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
 print("Accuracy after training:", testAccuracy(model, valid_dl))
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN", "weight")
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN", "bias")
-quantize(model)
+quantize(model, ["weight"])
 print("Accuracy after quantization:", testAccuracy(model, valid_dl))
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN quantized", "weight")
 print("")
@@ -272,14 +268,14 @@ lr = 0.1  # Learning rate.
 opt = optim.SGD(model.parameters(), lr=lr, momentum=0.9)  # Optimizer.
 
 print("Model:", model)
-print("Number of parameters:", count_parameters(model))
+print("Number of parameters:", utilities.count_parameters(model))
 print("Accuracy before training:", testAccuracy(model, valid_dl))
 fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
 print("Accuracy after training:", testAccuracy(model, valid_dl))
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN_KAF", "weight")
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN_KAF", "bias")
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN_KAF", "alpha")
-quantize(model)
+quantize(model, ["weight", "alpha"])
 print("Accuracy after quantization:", testAccuracy(model, valid_dl))
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN_KAF quantized", "weight")
 plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN_KAF quantized", "alpha")
