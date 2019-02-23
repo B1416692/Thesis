@@ -89,40 +89,6 @@ def quantize(model, parameter_types):
             if hasattr(layer, "alpha"):
                 layer.alpha.data.apply_(quantizer.quantize)  # apply_(function) only works with CPU tensors.
 
-# - Data visualization
-
-import numpy as np
-import scipy.special
-from bokeh.layouts import gridplot
-from bokeh.plotting import figure, show, output_file
-import utilities
-
-DISITRBUTION_PLOT_WIDTH = 1250
-distribution_plots = {}
-
-def make_plot(title, hist, edges, x, x_label, y_label):
-    p = figure(title=title, tools='', background_fill_color="#fafafa")
-    p.quad(top=hist, bottom=0, left=edges[:-1], right=edges[1:], fill_color="steelblue", line_color="steelblue", alpha=1.0)
-
-    p.y_range.start = 0
-    p.xaxis.axis_label = x_label
-    p.yaxis.axis_label = y_label
-    p.grid.grid_line_color="white"
-    return p
-
-def plot_distribution(model, resolution, title, parameter_type):
-    values = utilities.get(model, parameter_type)
-    minimum = min(values)
-    maximum = max(values)
-    
-    hist, edges = np.histogram(values, density=True, bins=resolution)
-    x = np.linspace(minimum, maximum, resolution)
-
-    plot = make_plot(title + " - " + parameter_type, hist, edges, x, parameter_type, "frequency")
-    if parameter_type not in distribution_plots.keys():
-        distribution_plots[parameter_type] = []
-    distribution_plots[parameter_type].append(plot)
-
 # - Define neural network structures
 
 from torch import nn
@@ -203,6 +169,9 @@ class CNN_KAF(nn.Module):
 
 from torch import optim
 import torch.nn.functional as F
+import utilities
+import data_visualization
+from data_visualization import plot_distribution
 
 # FF
 model = FF()  # Model.
@@ -213,17 +182,18 @@ loss_func = F.nll_loss  # Loss function.
 batch_size = 64  # Batch size.
 train_dl, valid_dl = get_data(train_ds, valid_ds, batch_size)
 epochs = 5  # How many epochs to train for.
+distribution_plot_resolution = data_visualization.DISTRIBUTION_PLOT_WIDTH
 
 print("Model:", model)
 print("Number of parameters:", utilities.count_parameters(model))
 print("Accuracy before training:", testAccuracy(model, valid_dl))
 fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
 print("Accuracy after training:", testAccuracy(model, valid_dl))
-plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF", "weight")
-plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF", "bias")
+plot_distribution(model, distribution_plot_resolution, "FF", "weight")
+plot_distribution(model, distribution_plot_resolution, "FF", "bias")
 quantize(model, ["weight"])
 print("Accuracy after quantization:", testAccuracy(model, valid_dl))
-plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF quantized", "weight")
+plot_distribution(model, distribution_plot_resolution, "FF quantized", "weight")
 print("")
 
 # FF_KAF
@@ -236,13 +206,13 @@ print("Number of parameters:", utilities.count_parameters(model))
 print("Accuracy before training:", testAccuracy(model, valid_dl))
 fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
 print("Accuracy after training:", testAccuracy(model, valid_dl))
-plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF_KAF", "weight")
-plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF_KAF", "bias")
-plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF_KAF", "alpha")
+plot_distribution(model, distribution_plot_resolution, "FF_KAF", "weight")
+plot_distribution(model, distribution_plot_resolution, "FF_KAF", "bias")
+plot_distribution(model, distribution_plot_resolution, "FF_KAF", "alpha")
 quantize(model, ["weight", "alpha"])
 print("Accuracy after quantization:", testAccuracy(model, valid_dl))
-plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF_KAF quantized", "weight")
-plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "FF_KAF quantized", "alpha")
+plot_distribution(model, distribution_plot_resolution, "FF_KAF quantized", "weight")
+plot_distribution(model, distribution_plot_resolution, "FF_KAF quantized", "alpha")
 print("")
 
 # CNN
@@ -255,11 +225,11 @@ print("Number of parameters:", utilities.count_parameters(model))
 print("Accuracy before training:", testAccuracy(model, valid_dl))
 fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
 print("Accuracy after training:", testAccuracy(model, valid_dl))
-plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN", "weight")
-plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN", "bias")
+plot_distribution(model, distribution_plot_resolution, "CNN", "weight")
+plot_distribution(model, distribution_plot_resolution, "CNN", "bias")
 quantize(model, ["weight"])
 print("Accuracy after quantization:", testAccuracy(model, valid_dl))
-plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN quantized", "weight")
+plot_distribution(model, distribution_plot_resolution, "CNN quantized", "weight")
 print("")
 
 # CNN_KAF
@@ -272,16 +242,14 @@ print("Number of parameters:", utilities.count_parameters(model))
 print("Accuracy before training:", testAccuracy(model, valid_dl))
 fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
 print("Accuracy after training:", testAccuracy(model, valid_dl))
-plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN_KAF", "weight")
-plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN_KAF", "bias")
-plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN_KAF", "alpha")
+plot_distribution(model, distribution_plot_resolution, "CNN_KAF", "weight")
+plot_distribution(model, distribution_plot_resolution, "CNN_KAF", "bias")
+plot_distribution(model, distribution_plot_resolution, "CNN_KAF", "alpha")
 quantize(model, ["weight", "alpha"])
 print("Accuracy after quantization:", testAccuracy(model, valid_dl))
-plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN_KAF quantized", "weight")
-plot_distribution(model, DISITRBUTION_PLOT_WIDTH, "CNN_KAF quantized", "alpha")
+plot_distribution(model, distribution_plot_resolution, "CNN_KAF quantized", "weight")
+plot_distribution(model, distribution_plot_resolution, "CNN_KAF quantized", "alpha")
 print("")
 
 # Output plots
-for key in distribution_plots.keys():
-    output_file(key + '_distribution.html', title=key + " distribution")
-    show(gridplot(distribution_plots[key], ncols=1, plot_width=DISITRBUTION_PLOT_WIDTH, plot_height=400, toolbar_location=None))
+data_visualization.output_plots()
