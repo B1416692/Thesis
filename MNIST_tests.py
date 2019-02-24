@@ -75,16 +75,33 @@ def testAccuracy(model, test_dl):
 
 import quantization
 
-# TODO: Make quantizer selectable from parameter in quantize rather than hard-coded.
-def quantize(model, parameter_types):
+def quantize(model, parameter_types, quantizer_type, n, outliers_filter=0, base=2):
+    quantizers = {}
+    for parameter_type in parameter_types:
+        quantizer = None
+        if quantizer_type is "AsymmetricUniform":
+            quantizer = quantization.AsymmetricUniformQuantizer(model, parameter_type, n, outliers_filter=outliers_filter)
+        elif quantizer_type is "SymmetricUniform":
+            quantizer = quantization.SymmetricUniformQuantizer(model, parameter_type, n, outliers_filter=outliers_filter)
+        elif quantizer_type is "AsymmetricLogarithmic":
+            quantizer = quantization.AsymmetricLogarithmicQuantizer(model, parameter_type, n, outliers_filter=outliers_filter, base=base)
+        elif quantizer_type is "SymmetricLogarithmic":
+            quantizer = quantization.SymmetricLogarithmicQuantizer(model, parameter_type, n, outliers_filter=outliers_filter, base=base)
+        elif quantizer_type is "AsymmetricDensityBased":
+            quantizer = quantization.AsymmetricDensityBasedQuantizer(model, parameter_type, n)
+        elif quantizer_type is "SymmetricDensityBased":
+            quantizer = quantization.SymmetricDensityBasedQuantizer(model, parameter_type, n)
+        else:
+            raise Exception("Unknown quantizer_type")
+        quantizers[parameter_type] = quantizer
     if "weight" in parameter_types:
-        quantizer = quantization.AsymmetricUniformQuantizer(model, "weight", 31)
+        quantizer = quantizers["weight"]
         for layer in model.children():
             if hasattr(layer, "weight"):
                 layer.weight.data.apply_(quantizer.quantize)  # apply_(function) only works with CPU tensors.
     # TODO: Phugly. Find way to avoid these repetitions.
     if "alpha" in parameter_types:
-        quantizer = quantization.AsymmetricUniformQuantizer(model, "alpha", 31)
+        quantizer = quantizers["alpha"]
         for layer in model.children():
             if hasattr(layer, "alpha"):
                 layer.alpha.data.apply_(quantizer.quantize)  # apply_(function) only works with CPU tensors.
@@ -183,6 +200,7 @@ batch_size = 64  # Batch size.
 train_dl, valid_dl = get_data(train_ds, valid_ds, batch_size)
 epochs = 5  # How many epochs to train for.
 distribution_plot_resolution = data_visualization.DISTRIBUTION_PLOT_WIDTH
+BACKUP_PATH = "./backup"
 
 print("Model:", model)
 print("Number of parameters:", utilities.count_parameters(model))
@@ -191,9 +209,14 @@ fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
 print("Accuracy after training:", testAccuracy(model, valid_dl))
 plot_distribution(model, distribution_plot_resolution, "FF", "weight")
 plot_distribution(model, distribution_plot_resolution, "FF", "bias")
-quantize(model, ["weight"])
+#torch.save(model.state_dict(), BACKUP_PATH)
+quantize(model, ["weight"], "AsymmetricUniform", 31)
 print("Accuracy after quantization:", testAccuracy(model, valid_dl))
 plot_distribution(model, distribution_plot_resolution, "FF quantized", "weight")
+'''model.load_state_dict(torch.load(BACKUP_PATH))
+quantize(model, ["weight"], "AsymmetricLogarithmic", 31)
+print("Accuracy after quantization:", testAccuracy(model, valid_dl))
+plot_distribution(model, distribution_plot_resolution, "FF quantized", "weight")'''
 print("")
 
 # FF_KAF
@@ -209,7 +232,7 @@ print("Accuracy after training:", testAccuracy(model, valid_dl))
 plot_distribution(model, distribution_plot_resolution, "FF_KAF", "weight")
 plot_distribution(model, distribution_plot_resolution, "FF_KAF", "bias")
 plot_distribution(model, distribution_plot_resolution, "FF_KAF", "alpha")
-quantize(model, ["weight", "alpha"])
+quantize(model, ["weight", "alpha"], "AsymmetricUniform", 31)
 print("Accuracy after quantization:", testAccuracy(model, valid_dl))
 plot_distribution(model, distribution_plot_resolution, "FF_KAF quantized", "weight")
 plot_distribution(model, distribution_plot_resolution, "FF_KAF quantized", "alpha")
@@ -227,7 +250,7 @@ fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
 print("Accuracy after training:", testAccuracy(model, valid_dl))
 plot_distribution(model, distribution_plot_resolution, "CNN", "weight")
 plot_distribution(model, distribution_plot_resolution, "CNN", "bias")
-quantize(model, ["weight"])
+quantize(model, ["weight"], "AsymmetricUniform", 31)
 print("Accuracy after quantization:", testAccuracy(model, valid_dl))
 plot_distribution(model, distribution_plot_resolution, "CNN quantized", "weight")
 print("")
@@ -245,7 +268,7 @@ print("Accuracy after training:", testAccuracy(model, valid_dl))
 plot_distribution(model, distribution_plot_resolution, "CNN_KAF", "weight")
 plot_distribution(model, distribution_plot_resolution, "CNN_KAF", "bias")
 plot_distribution(model, distribution_plot_resolution, "CNN_KAF", "alpha")
-quantize(model, ["weight", "alpha"])
+quantize(model, ["weight", "alpha"], "AsymmetricUniform", 31)
 print("Accuracy after quantization:", testAccuracy(model, valid_dl))
 plot_distribution(model, distribution_plot_resolution, "CNN_KAF quantized", "weight")
 plot_distribution(model, distribution_plot_resolution, "CNN_KAF quantized", "alpha")
