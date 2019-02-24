@@ -78,13 +78,13 @@ import quantization
 # TODO: Make quantizer selectable from parameter in quantize rather than hard-coded.
 def quantize(model, parameter_types):
     if "weight" in parameter_types:
-        quantizer = quantization.AsymmetricLinearQuantizer(model, "weight", 31)
+        quantizer = quantization.AsymmetricUniformQuantizer(model, "weight", 31)
         for layer in model.children():
             if hasattr(layer, "weight"):
                 layer.weight.data.apply_(quantizer.quantize)  # apply_(function) only works with CPU tensors.
     # TODO: Phugly. Find way to avoid these repetitions.
     if "alpha" in parameter_types:
-        quantizer = quantization.AsymmetricLinearQuantizer(model, "alpha", 31)
+        quantizer = quantization.AsymmetricUniformQuantizer(model, "alpha", 31)
         for layer in model.children():
             if hasattr(layer, "alpha"):
                 layer.alpha.data.apply_(quantizer.quantize)  # apply_(function) only works with CPU tensors.
