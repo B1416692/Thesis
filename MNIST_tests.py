@@ -36,7 +36,6 @@ n, c = x_train.shape
 train_ds = TensorDataset(x_train, y_train)
 valid_ds = TensorDataset(x_valid, y_valid)
 
-# - Utilities
 from torch.utils.data import DataLoader
 
 def get_data(train_ds, valid_ds, batch_size):
@@ -44,67 +43,6 @@ def get_data(train_ds, valid_ds, batch_size):
         DataLoader(train_ds, batch_size=batch_size, shuffle=True),
         DataLoader(valid_ds, batch_size=batch_size * 2),
     )
-
-def fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs):
-    print("Training...")
-    print("#", "\t", "Loss")
-    for epoch in range(epochs):
-        model.train()
-        for x, y in train_dl:
-            prediction = model(x)
-            loss = loss_func(prediction, y)
-
-            loss.backward()
-            opt.step()
-            opt.zero_grad()
-        
-        model.eval()
-        with torch.no_grad():
-            valid_loss = sum(loss_func(model(x), y) for x, y in valid_dl)
-
-        print(epoch + 1, "\t", (valid_loss / len(valid_dl)).item())
-
-def accuracy(x, y):
-    predictions = torch.argmax(x, dim=1)
-    return (predictions == y).float().mean()
-
-def testAccuracy(model, test_dl):
-    return (sum(accuracy(model(x), y) for x, y in test_dl) / len(test_dl)).item()
-
-# - Quantization
-
-import quantization
-
-def quantize(model, parameter_types, quantizer_type, n, outliers_filter=0, base=2):
-    quantizers = {}
-    for parameter_type in parameter_types:
-        quantizer = None
-        if quantizer_type is "AsymmetricUniform":
-            quantizer = quantization.AsymmetricUniformQuantizer(model, parameter_type, n, outliers_filter=outliers_filter)
-        elif quantizer_type is "SymmetricUniform":
-            quantizer = quantization.SymmetricUniformQuantizer(model, parameter_type, n, outliers_filter=outliers_filter)
-        elif quantizer_type is "AsymmetricLogarithmic":
-            quantizer = quantization.AsymmetricLogarithmicQuantizer(model, parameter_type, n, outliers_filter=outliers_filter, base=base)
-        elif quantizer_type is "SymmetricLogarithmic":
-            quantizer = quantization.SymmetricLogarithmicQuantizer(model, parameter_type, n, outliers_filter=outliers_filter, base=base)
-        elif quantizer_type is "AsymmetricDensityBased":
-            quantizer = quantization.AsymmetricDensityBasedQuantizer(model, parameter_type, n)
-        elif quantizer_type is "SymmetricDensityBased":
-            quantizer = quantization.SymmetricDensityBasedQuantizer(model, parameter_type, n)
-        else:
-            raise Exception("Unknown quantizer_type")
-        quantizers[parameter_type] = quantizer
-    if "weight" in parameter_types:
-        quantizer = quantizers["weight"]
-        for layer in model.children():
-            if hasattr(layer, "weight"):
-                layer.weight.data.apply_(quantizer.quantize)  # apply_(function) only works with CPU tensors.
-    # TODO: Phugly. Find way to avoid these repetitions.
-    if "alpha" in parameter_types:
-        quantizer = quantizers["alpha"]
-        for layer in model.children():
-            if hasattr(layer, "alpha"):
-                layer.alpha.data.apply_(quantizer.quantize)  # apply_(function) only works with CPU tensors.
 
 # - Define neural network structures
 
@@ -182,42 +120,72 @@ class CNN_KAF(nn.Module):
         y = F.log_softmax(self.kaf1(y4), dim=0)
         return y
 
-# - Configure tests
+# - Train function
+def fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs):
+    print("Training...")
+    print("#", "\t", "Loss")
+    for epoch in range(epochs):
+        model.train()
+        for x, y in train_dl:
+            prediction = model(x)
+            loss = loss_func(prediction, y)
+
+            loss.backward()
+            opt.step()
+            opt.zero_grad()
+        
+        model.eval()
+        with torch.no_grad():
+            valid_loss = sum(loss_func(model(x), y) for x, y in valid_dl)
+
+        print(epoch + 1, "\t", (valid_loss / len(valid_dl)).item())
+
+# - Experiments
+# Notice that models parameters will remain unchanged after an experiment, to allow easy experiments serialization.
+# To change the parameters in a persistant way use modification functions directly on the model, for example a quantization function.
 
 from torch import optim
 import torch.nn.functional as F
 import utilities
-import data_visualization
-from data_visualization import plot_distribution
+import experiment_suite
+import quantization
+import data_visualization as dv
+
+LOAD_MODELS = False  # If False, models parameters will be saved after training. If True, models parameters will be loaded.
+
+# Fixed parameters
+batch_size = 64  # Batch size.
+train_dl, valid_dl = get_data(train_ds, valid_ds, batch_size)
+epochs = 5  # How many epochs to train for.
+loss_func = F.nll_loss  # Loss function.
+
+LAYOUT_WIDTH = 1250  # Width of results plots.
 
 # FF
 model = FF()  # Model.
 lr = 0.5  # Learning rate.
 opt = optim.SGD(model.parameters(), lr=lr, momentum=0.2)  # Optimizer.
-loss_func = F.nll_loss  # Loss function.
-# Fixed parameters
-batch_size = 64  # Batch size.
-train_dl, valid_dl = get_data(train_ds, valid_ds, batch_size)
-epochs = 5  # How many epochs to train for.
-distribution_plot_resolution = data_visualization.DISTRIBUTION_PLOT_WIDTH
-BACKUP_PATH = "./backup"
 
 print("Model:", model)
 print("Number of parameters:", utilities.count_parameters(model))
-print("Accuracy before training:", testAccuracy(model, valid_dl))
-fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
-print("Accuracy after training:", testAccuracy(model, valid_dl))
-plot_distribution(model, distribution_plot_resolution, "FF", "weight")
-plot_distribution(model, distribution_plot_resolution, "FF", "bias")
-#torch.save(model.state_dict(), BACKUP_PATH)
-quantize(model, ["weight"], "AsymmetricUniform", 31)
-print("Accuracy after quantization:", testAccuracy(model, valid_dl))
-plot_distribution(model, distribution_plot_resolution, "FF quantized", "weight")
-'''model.load_state_dict(torch.load(BACKUP_PATH))
-quantize(model, ["weight"], "AsymmetricLogarithmic", 31)
-print("Accuracy after quantization:", testAccuracy(model, valid_dl))
-plot_distribution(model, distribution_plot_resolution, "FF quantized", "weight")'''
-print("")
+model_name = "FF"
+if LOAD_MODELS is False:
+    print("Accuracy before training:", utilities.testAccuracy(model, valid_dl))
+    fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
+    torch.save(model.state_dict(), "./" + model_name + ".pt")
+    print("Accuracy after training:", utilities.testAccuracy(model, valid_dl))
+else:
+    model.load_state_dict(torch.load("./" + model_name +".pt"))
+    print("Parameters loaded")
+
+experiments = []
+parameters_to_quantize = ["weight"]
+experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.NONE, 0))
+experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 31))
+experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 17))
+experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 9))
+suite = experiment_suite.QuantizationExperimentSuite(experiments, layout=dv.SplitLayout(LAYOUT_WIDTH, len(parameters_to_quantize)), id="FF")
+suite.run()
 
 # FF_KAF
 model = FF_KAF()  # Model.
@@ -226,17 +194,24 @@ opt = optim.SGD(model.parameters(), lr=lr, momentum=0.1)  # Optimizer.
 
 print("Model:", model)
 print("Number of parameters:", utilities.count_parameters(model))
-print("Accuracy before training:", testAccuracy(model, valid_dl))
-fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
-print("Accuracy after training:", testAccuracy(model, valid_dl))
-plot_distribution(model, distribution_plot_resolution, "FF_KAF", "weight")
-plot_distribution(model, distribution_plot_resolution, "FF_KAF", "bias")
-plot_distribution(model, distribution_plot_resolution, "FF_KAF", "alpha")
-quantize(model, ["weight", "alpha"], "AsymmetricUniform", 31)
-print("Accuracy after quantization:", testAccuracy(model, valid_dl))
-plot_distribution(model, distribution_plot_resolution, "FF_KAF quantized", "weight")
-plot_distribution(model, distribution_plot_resolution, "FF_KAF quantized", "alpha")
-print("")
+model_name = "FF_KAF"
+if LOAD_MODELS is False:
+    print("Accuracy before training:", utilities.testAccuracy(model, valid_dl))
+    fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
+    torch.save(model.state_dict(), "./" + model_name + ".pt")
+    print("Accuracy after training:", utilities.testAccuracy(model, valid_dl))
+else:
+    model.load_state_dict(torch.load("./" + model_name +".pt"))
+    print("Parameters loaded")
+
+experiments = []
+parameters_to_quantize = ["weight", "alpha"]
+experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.NONE, 0))
+experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 31))
+experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 17))
+experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 9))
+suite = experiment_suite.QuantizationExperimentSuite(experiments, layout=dv.SplitLayout(LAYOUT_WIDTH, len(parameters_to_quantize)), id="FF_KAF")
+suite.run()
 
 # CNN
 model = CNN()  # Model.
@@ -245,15 +220,24 @@ opt = optim.SGD(model.parameters(), lr=lr, momentum=0.9)  # Optimizer.
 
 print("Model:", model)
 print("Number of parameters:", utilities.count_parameters(model))
-print("Accuracy before training:", testAccuracy(model, valid_dl))
-fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
-print("Accuracy after training:", testAccuracy(model, valid_dl))
-plot_distribution(model, distribution_plot_resolution, "CNN", "weight")
-plot_distribution(model, distribution_plot_resolution, "CNN", "bias")
-quantize(model, ["weight"], "AsymmetricUniform", 31)
-print("Accuracy after quantization:", testAccuracy(model, valid_dl))
-plot_distribution(model, distribution_plot_resolution, "CNN quantized", "weight")
-print("")
+model_name = "CNN"
+if LOAD_MODELS is False:
+    print("Accuracy before training:", utilities.testAccuracy(model, valid_dl))
+    fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
+    torch.save(model.state_dict(), "./" + model_name + ".pt")
+    print("Accuracy after training:", utilities.testAccuracy(model, valid_dl))
+else:
+    model.load_state_dict(torch.load("./" + model_name +".pt"))
+    print("Parameters loaded")
+
+experiments = []
+parameters_to_quantize = ["weight"]
+experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.NONE, 0))
+experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 31))
+experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 17))
+experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 9))
+suite = experiment_suite.QuantizationExperimentSuite(experiments, layout=dv.SplitLayout(LAYOUT_WIDTH, len(parameters_to_quantize)), id="CNN")
+suite.run()
 
 # CNN_KAF
 model = CNN_KAF()
@@ -262,17 +246,21 @@ opt = optim.SGD(model.parameters(), lr=lr, momentum=0.9)  # Optimizer.
 
 print("Model:", model)
 print("Number of parameters:", utilities.count_parameters(model))
-print("Accuracy before training:", testAccuracy(model, valid_dl))
-fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
-print("Accuracy after training:", testAccuracy(model, valid_dl))
-plot_distribution(model, distribution_plot_resolution, "CNN_KAF", "weight")
-plot_distribution(model, distribution_plot_resolution, "CNN_KAF", "bias")
-plot_distribution(model, distribution_plot_resolution, "CNN_KAF", "alpha")
-quantize(model, ["weight", "alpha"], "AsymmetricUniform", 31)
-print("Accuracy after quantization:", testAccuracy(model, valid_dl))
-plot_distribution(model, distribution_plot_resolution, "CNN_KAF quantized", "weight")
-plot_distribution(model, distribution_plot_resolution, "CNN_KAF quantized", "alpha")
-print("")
+model_name = "CNN_KAF"
+if LOAD_MODELS is False:
+    print("Accuracy before training:", utilities.testAccuracy(model, valid_dl))
+    fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
+    torch.save(model.state_dict(), "./" + model_name + ".pt")
+    print("Accuracy after training:", utilities.testAccuracy(model, valid_dl))
+else:
+    model.load_state_dict(torch.load("./" + model_name +".pt"))
+    print("Parameters loaded")
 
-# Output plots
-data_visualization.output_plots()
+experiments = []
+parameters_to_quantize = ["weight", "alpha"]
+experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.NONE, 0))
+experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 31))
+experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 17))
+experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 9))
+suite = experiment_suite.QuantizationExperimentSuite(experiments, layout=dv.SplitLayout(LAYOUT_WIDTH, len(parameters_to_quantize)), id="CNN_KAF")
+suite.run()

@@ -12,3 +12,10 @@ def get(model, parameter_type):
                 parameter = parameter.item()
                 result.append(parameter)
     return result
+
+def accuracy(x, y):
+    predictions = torch.argmax(x, dim=1)
+    return (predictions == y).float().mean()
+
+def testAccuracy(model, test_dl):
+    return (sum(accuracy(model(x), y) for x, y in test_dl) / len(test_dl)).item()

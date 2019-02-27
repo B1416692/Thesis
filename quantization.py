@@ -1,6 +1,47 @@
 import utilities
 import numpy as np
 
+NONE = -1
+UNIFORM_A = 0
+UNIFORM_S = 1
+LOGARITHMIC_A = 2
+LOGARITHMIC_S = 3
+DENSITY_A = 4
+DENSITY_S = 5
+
+def quantize(model, parameter_types, quantizer_type, n, outliers_filter=0, base=2):
+    quantizers = {}
+    for parameter_type in parameter_types:
+        quantizer = None
+        if quantizer_type is NONE:
+            quantizer = IdentityQuantizer(model, parameter_type)
+        elif quantizer_type is UNIFORM_A:
+            quantizer = AsymmetricUniformQuantizer(model, parameter_type, n, outliers_filter=outliers_filter)
+        elif quantizer_type is UNIFORM_S:
+            quantizer = SymmetricUniformQuantizer(model, parameter_type, n, outliers_filter=outliers_filter)
+        elif quantizer_type is LOGARITHMIC_A:
+            quantizer = AsymmetricLogarithmicQuantizer(model, parameter_type, n, outliers_filter=outliers_filter, base=base)
+        elif quantizer_type is LOGARITHMIC_S:
+            quantizer = SymmetricLogarithmicQuantizer(model, parameter_type, n, outliers_filter=outliers_filter, base=base)
+        elif quantizer_type is DENSITY_A:
+            quantizer = AsymmetricDensityBasedQuantizer(model, parameter_type, n)
+        elif quantizer_type is DENSITY_S:
+            quantizer = SymmetricDensityBasedQuantizer(model, parameter_type, n)
+        else:
+            raise Exception("Unknown quantizer_type")
+        quantizers[parameter_type] = quantizer
+    if "weight" in parameter_types:
+        quantizer = quantizers["weight"]
+        for layer in model.children():
+            if hasattr(layer, "weight"):
+                layer.weight.data.apply_(quantizer.quantize)  # apply_(function) only works with CPU tensors.
+    # TODO: Phugly. Find way to avoid these repetitions.
+    if "alpha" in parameter_types:
+        quantizer = quantizers["alpha"]
+        for layer in model.children():
+            if hasattr(layer, "alpha"):
+                layer.alpha.data.apply_(quantizer.quantize)  # apply_(function) only works with CPU tensors.
+
 class Quantizer:
     def __init__(self, model, parameter_type):
         self.model = model
@@ -8,6 +49,15 @@ class Quantizer:
 
     def quantize(self, element):
         raise NotImplementedError("I'm still working things out...")
+
+# Identity quantizer. Actually applies no quantization. Utility.
+class IdentityQuantizer(Quantizer):
+    def __init__(self, model, parameter_type):
+        super().__init__(model, parameter_type)
+
+    def quantize(self, element):
+        return element
+
 
 class RangeQuantizer(Quantizer):
     def __init__(self, model, parameter_type, n):
