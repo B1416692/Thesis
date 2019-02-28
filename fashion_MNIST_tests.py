@@ -2,8 +2,8 @@
 
 import torchvision
 
-train_ds = torchvision.datasets.MNIST(root="./data/MNIST", train=True, transform=torchvision.transforms.ToTensor(), download=True)
-valid_ds = torchvision.datasets.MNIST(root="./data/MNIST", train=False, transform=torchvision.transforms.ToTensor())
+train_ds = torchvision.datasets.FashionMNIST(root="./data/FashionMNIST", train=True, transform=torchvision.transforms.ToTensor(), download=True)
+valid_ds = torchvision.datasets.FashionMNIST(root="./data/FashionMNIST", train=False, transform=torchvision.transforms.ToTensor())
 
 from torch.utils.data import DataLoader
 
@@ -107,7 +107,7 @@ def fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs):
         
         model.eval()
         with torch.no_grad():
-            valid_loss = sum(loss_func(model(x), y) for x, y in valid_dl)  # HARDCODED MNIST DATALOADER MAGIC
+            valid_loss = sum(loss_func(model(x), y) for x, y in valid_dl)
 
         print(epoch + 1, "\t", (valid_loss / len(valid_dl)).item())
 
@@ -141,7 +141,7 @@ opt = optim.SGD(model.parameters(), lr=lr, momentum=0.2)  # Optimizer.
 
 print("Model:", model)
 print("Number of parameters:", utilities.count_parameters(model))
-model_name = "MNIST_FF"
+model_name = "FashionMNIST_FF"
 if LOAD_MODELS is False:
     print("Accuracy before training:", utilities.testAccuracy(model, valid_dl))
     fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
@@ -157,7 +157,7 @@ experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, para
 experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 31))
 experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 17))
 experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 9))
-suite = experiment_suite.QuantizationExperimentSuite(experiments, layout=dv.SplitLayoutPlus(LAYOUT_WIDTH, len(parameters_to_quantize)), id="MNIST FF")
+suite = experiment_suite.QuantizationExperimentSuite(experiments, layout=dv.SplitLayoutPlus(LAYOUT_WIDTH, len(parameters_to_quantize)), id="FashionMNIST FF")
 suite.run()
 
 # FF_KAF
@@ -167,7 +167,7 @@ opt = optim.SGD(model.parameters(), lr=lr, momentum=0.1)  # Optimizer.
 
 print("Model:", model)
 print("Number of parameters:", utilities.count_parameters(model))
-model_name = "MNIST_FF_KAF"
+model_name = "FashionMNIST_FF_KAF"
 if LOAD_MODELS is False:
     print("Accuracy before training:", utilities.testAccuracy(model, valid_dl))
     fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
@@ -183,7 +183,7 @@ experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, para
 experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 31))
 experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 17))
 experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 9))
-suite = experiment_suite.QuantizationExperimentSuite(experiments, layout=dv.SplitLayoutPlus(LAYOUT_WIDTH, len(parameters_to_quantize)), id="MNIST FF_KAF")
+suite = experiment_suite.QuantizationExperimentSuite(experiments, layout=dv.SplitLayoutPlus(LAYOUT_WIDTH, len(parameters_to_quantize)), id="FashionMNIST FF_KAF")
 suite.run()
 
 # CNN
@@ -193,7 +193,7 @@ opt = optim.SGD(model.parameters(), lr=lr, momentum=0.9)  # Optimizer.
 
 print("Model:", model)
 print("Number of parameters:", utilities.count_parameters(model))
-model_name = "MNIST_CNN"
+model_name = "FashionMNIST_CNN"
 if LOAD_MODELS is False:
     print("Accuracy before training:", utilities.testAccuracy(model, valid_dl))
     fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
@@ -209,7 +209,7 @@ experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, para
 experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 31))
 experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 17))
 experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 9))
-suite = experiment_suite.QuantizationExperimentSuite(experiments, layout=dv.SplitLayoutPlus(LAYOUT_WIDTH, len(parameters_to_quantize)), id="MNIST CNN")
+suite = experiment_suite.QuantizationExperimentSuite(experiments, layout=dv.SplitLayoutPlus(LAYOUT_WIDTH, len(parameters_to_quantize)), id="FashionMNIST CNN")
 suite.run()
 
 # CNN_KAF
@@ -219,7 +219,7 @@ opt = optim.SGD(model.parameters(), lr=lr, momentum=0.9)  # Optimizer.
 
 print("Model:", model)
 print("Number of parameters:", utilities.count_parameters(model))
-model_name = "MNIST_CNN_KAF"
+model_name = "FashionMNIST_CNN_KAF"
 if LOAD_MODELS is False:
     print("Accuracy before training:", utilities.testAccuracy(model, valid_dl))
     fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs)
@@ -235,5 +235,5 @@ experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, para
 experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 31))
 experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 17))
 experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 9))
-suite = experiment_suite.QuantizationExperimentSuite(experiments, layout=dv.SplitLayoutPlus(LAYOUT_WIDTH, len(parameters_to_quantize)), id="MNIST CNN_KAF")
+suite = experiment_suite.QuantizationExperimentSuite(experiments, layout=dv.SplitLayoutPlus(LAYOUT_WIDTH, len(parameters_to_quantize)), id="FashionMNIST CNN_KAF")
 suite.run()

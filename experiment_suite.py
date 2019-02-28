@@ -21,6 +21,7 @@ class QuantizationExperimentSuite(ExperimentSuite):
             quantization.quantize(experiment.model, experiment.parameter_types, experiment.quantizer_type, experiment.n, outliers_filter=experiment.outliers_filter, base=experiment.base)
             accuracy = utilities.testAccuracy(experiment.model, experiment.test_ds)
             print(experiment.id + " accuracy:", accuracy)
+            self.visualizer.plot_value(accuracy, 1, "accuracy")
             for parameter_type in experiment.parameter_types:
                 self.visualizer.plot_distribution(experiment.model, self.visualizer.layout.plot_resolution, experiment.id, parameter_type)
             experiment.model.load_state_dict(torch.load(self.BACKUP_PATH))
