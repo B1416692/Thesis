@@ -16,13 +16,13 @@ def quantize(model, parameter_types, quantizer_type, n, outliers_filter=0, base=
         if quantizer_type is NONE:
             quantizer = IdentityQuantizer(model, parameter_type)
         elif quantizer_type is UNIFORM_A:
-            quantizer = AsymmetricUniformQuantizer(model, parameter_type, n, outliers_filter=outliers_filter)
+            quantizer = AsymmetricUniformQuantizer(model, parameter_type, n)
         elif quantizer_type is UNIFORM_S:
-            quantizer = SymmetricUniformQuantizer(model, parameter_type, n, outliers_filter=outliers_filter)
+            quantizer = SymmetricUniformQuantizer(model, parameter_type, n)
         elif quantizer_type is LOGARITHMIC_A:
-            quantizer = AsymmetricLogarithmicQuantizer(model, parameter_type, n, outliers_filter=outliers_filter, base=base)
+            quantizer = AsymmetricLogarithmicQuantizer(model, parameter_type, n, base=base)
         elif quantizer_type is LOGARITHMIC_S:
-            quantizer = SymmetricLogarithmicQuantizer(model, parameter_type, n, outliers_filter=outliers_filter, base=base)
+            quantizer = SymmetricLogarithmicQuantizer(model, parameter_type, n, base=base)
         elif quantizer_type is DENSITY_A:
             quantizer = AsymmetricDensityBasedQuantizer(model, parameter_type, n)
         elif quantizer_type is DENSITY_S:
@@ -72,11 +72,11 @@ class RangeQuantizer(Quantizer):
 # TODO: For now, values is assumed to contain elments BOTH greater and smaller than 0. Make it universal.
 # TODO: Also, values is supposed to be non empthy. Check.
 class AsymmetricUniformQuantizer(RangeQuantizer):
-    def __init__(self, model, parameter_type, n, outliers_filter=0):
+    def __init__(self, model, parameter_type, n):
         super().__init__(model, parameter_type, n)
         values = utilities.get(self.model, self.parameter_type)
-        min_value = np.percentile(values, 0 + outliers_filter)
-        max_value = np.percentile(values, 100 - outliers_filter)
+        min_value = min(values)
+        max_value = max(values)
         negative_gap = min_value / self.elements_per_side
         positive_gap = max_value / self.elements_per_side
         for i in range(1, self.elements_per_side + 1):
@@ -84,11 +84,11 @@ class AsymmetricUniformQuantizer(RangeQuantizer):
             self.quantizationDomain.append(i * positive_gap)
 
 class SymmetricUniformQuantizer(RangeQuantizer):
-    def __init__(self, model, parameter_type, n, outliers_filter=0):
+    def __init__(self, model, parameter_type, n):
         super().__init__(model, parameter_type, n)
         values = utilities.get(self.model, self.parameter_type)
-        min_value = np.percentile(values, 0 + outliers_filter)
-        max_value = np.percentile(values, 100 - outliers_filter)
+        min_value = min(values)
+        max_value = max(values)
         maximum = max(abs(min_value), abs(max_value))
         gap = maximum / self.elements_per_side
         for i in range(1, self.elements_per_side + 1):
@@ -96,34 +96,42 @@ class SymmetricUniformQuantizer(RangeQuantizer):
             self.quantizationDomain.append(-i * gap)
 
 class AsymmetricLogarithmicQuantizer(RangeQuantizer):
-    def __init__(self, model, parameter_type, n, base=2, outliers_filter=0):
+    def __init__(self, model, parameter_type, n, base=2):
         super().__init__(model, parameter_type, n)
         values = utilities.get(self.model, self.parameter_type)
-        min_value = np.percentile(values, 0 + outliers_filter)
-        max_value = np.percentile(values, 100 - outliers_filter)
+        min_value = min(values)
+        max_value = max(values)
         total = 0
-        for i in range(1, self.elements_per_side * 1):
-            total += base ** i
+        for i in range(0, self.elements_per_side):
+            total += (base ** i)
         negative_scale = abs(min_value) / total
         positive_scale = abs(max_value) / total
-        for i in range(1, self.elements_per_side + 1):
-            self.quantizationDomain.append(-(base ** i) * negative_scale)
-            self.quantizationDomain.append((base ** i) * positive_scale)
+        positive_total = 0
+        negative_total = 0
+        for i in range(0, self.elements_per_side):
+            negative_total += (base ** i)
+            self.quantizationDomain.append(-negative_total * negative_scale)
+            positive_total += (base ** i)
+            self.quantizationDomain.append(positive_total * positive_scale)
+        self.quantizationDomain.sort()
 
 class SymmetricLogarithmicQuantizer(RangeQuantizer):
-    def __init__(self, model, parameter_type, n, base=2, outliers_filter=0):
+    def __init__(self, model, parameter_type, n, base=2):
         super().__init__(model, parameter_type, n)
         values = utilities.get(self.model, self.parameter_type)
-        min_value = np.percentile(values, 0 + outliers_filter)
-        max_value = np.percentile(values, 100 - outliers_filter)
+        min_value = min(values)
+        max_value = max(values)
         maximum = max(abs(min_value), abs(max_value))
         total = 0
-        for i in range(1, self.elements_per_side * 1):
-            total += base ** i
+        for i in range(0, self.elements_per_side):
+            total += (base ** i)
         scale = maximum / total
-        for i in range(1, self.elements_per_side + 1):
-            self.quantizationDomain.append(-(base ** i) * scale)
-            self.quantizationDomain.append((base ** i) * scale)
+        total = 0
+        for i in range(0, self.elements_per_side):
+            total += (base ** i)
+            self.quantizationDomain.append(-total * scale)
+            self.quantizationDomain.append(total * scale)
+        self.quantizationDomain.sort()
 
 import bisect
 
