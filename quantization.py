@@ -125,25 +125,39 @@ class SymmetricLogarithmicQuantizer(RangeQuantizer):
             self.quantizationDomain.append(-(base ** i) * scale)
             self.quantizationDomain.append((base ** i) * scale)
 
+import bisect
+
+# Note: it will probably has not 0.
+# TODO: maybe forcing the two smallest (positive and negative) values to be equal, we get back 0 and improve accuracy?
 class AsymmetricDensityBasedQuantizer(RangeQuantizer):
     def __init__(self, model, parameter_type, n):
-        super().__init__(model, parameter_type, n)
+        super().__init__(model, parameter_type, n + 2)
+        self.quantizationDomain = []  # Remove 0 as near 0 will be obtained by averaging the two smaller (absolute) values.
         values = utilities.get(self.model, self.parameter_type)
-        negative_values = list(filter((0).__lt__, values))
+        negative_values = list(filter(lambda x: x <=0, values))
         negative_values = [abs(value) for value in negative_values]
-        positive_values = list(filter((0).__gt__, values))
+        positive_values = list(filter(lambda x: x >=0, values))
         percentile_gap = 100 / self.elements_per_side
-        for i in range(0, self.elements_per_side):
+        for i in range(1, self.elements_per_side):
             self.quantizationDomain.append(-np.percentile(negative_values, 100 - percentile_gap * i))
             self.quantizationDomain.append(np.percentile(positive_values, 100 - percentile_gap * i))
+        self.quantizationDomain.append(-max(negative_values) - 0.00001)
+        self.quantizationDomain.append(max(positive_values) + 0.00001)
+        self.quantizationDomain.sort()
+    
+    def quantize(self, element):
+        index = bisect.bisect(self.quantizationDomain, element)
+        return (self.quantizationDomain[index-1] + self.quantizationDomain[index]) / 2
 
+# Note: there is 0 but the distribution is not uniform.
 class SymmetricDensityBasedQuantizer(RangeQuantizer):
     def __init__(self, model, parameter_type, n):
-        super().__init__(model, parameter_type, n)
+        super().__init__(model, parameter_type, n + 2)
+        self.quantizationDomain = []  # Remove 0 as it will be obtained by averaging the two smaller (absolute) values.
         values = utilities.get(self.model, self.parameter_type)
-        negative_values = list(filter((0).__lt__, values))
+        negative_values = list(filter(lambda x: x <=0, values))
         negative_values = [abs(value) for value in negative_values]
-        positive_values = list(filter((0).__gt__, values))
+        positive_values = list(filter(lambda x: x >=0, values))
         maximum_negative = max(negative_values)
         maximum_positive = max(positive_values)
         to_use_values = []
@@ -152,6 +166,13 @@ class SymmetricDensityBasedQuantizer(RangeQuantizer):
         else:
             to_use_values = positive_values
         percentile_gap = 100 / self.elements_per_side
-        for i in range(0, self.elements_per_side):
+        for i in range(1, self.elements_per_side):
             self.quantizationDomain.append(-np.percentile(to_use_values, 100 - percentile_gap * i))
             self.quantizationDomain.append(np.percentile(to_use_values, 100 - percentile_gap * i))
+        self.quantizationDomain.append(-max(negative_values) - 0.00001)
+        self.quantizationDomain.append(max(positive_values) + 0.00001)
+        self.quantizationDomain.sort()
+    
+    def quantize(self, element):
+        index = bisect.bisect(self.quantizationDomain, element)
+        return (self.quantizationDomain[index-1] + self.quantizationDomain[index]) / 2
