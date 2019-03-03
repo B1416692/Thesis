@@ -10,23 +10,44 @@ class ExperimentSuite:
         self.id = id
 
 class QuantizationExperimentSuite(ExperimentSuite):
-    def __init__(self, experiments, layout=dv.VerticalLayout(1250), id=""):
+    def __init__(self, experiments, layout=dv.VerticalLayout(1250), id="", output_plots=True):
         super().__init__(experiments, id)
         self.visualizer = dv.Visualizer(layout, id)  # Result plots layout defined here.
         self.BACKUP_PATH = "./experiment_" + id + "_model_save.pt"
+        self.accuracies = []
+        self.output_plots = output_plots
     
     def run(self):  # Note: running an experiment on a model will leave its parameters unchanged after completion. 
         for experiment in self.experiments:
             torch.save(experiment.model.state_dict(), self.BACKUP_PATH)
-            quantization.quantize(experiment.model, experiment.parameter_types, experiment.quantizer_type, experiment.n, outliers_filter=experiment.outliers_filter, base=experiment.base)
+            quantization.quantize(experiment.model, experiment.parameter_types, experiment.quantizer_type, experiment.n, base=experiment.base)
             accuracy = utilities.testAccuracy(experiment.model, experiment.test_ds)
             print(experiment.id + " accuracy:", accuracy)
+            self.accuracies.append(accuracy)
             self.visualizer.plot_value(accuracy, 1, "accuracy")
             for parameter_type in experiment.parameter_types:
                 self.visualizer.plot_distribution(experiment.model, self.visualizer.layout.plot_resolution, experiment.id, parameter_type)
             experiment.model.load_state_dict(torch.load(self.BACKUP_PATH))
-        self.visualizer.output_plots()
+        if self.output_plots is True:
+            self.visualizer.output_plots()
         os.remove(self.BACKUP_PATH)
+
+def compare_accuracies(suites, title=""):
+    x_values_s = []
+    y_values_s = []
+    labels_s = []
+    for suite in suites:
+        labels_s.append(suite.id)
+        x_values = []
+        y_values = []
+        i = 0
+        for experiment in suite.experiments:
+            x_values.append(i)
+            i += 1
+        y_values = suite.accuracies
+        x_values_s.append(x_values)
+        y_values_s.append(y_values)
+    dv.plot_values(x_values_s, y_values_s, labels_s, title=title, width=suites[0].visualizer.layout.width)
     
 class Experiment:
     def __init__(self, model, test_ds, id=""):

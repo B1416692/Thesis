@@ -42,7 +42,7 @@ class Visualizer:
             original_maximum = max(original_values)
             minimum = min(minimum, original_minimum)
             maximum = min(maximum, original_maximum)
-            ghost_hist, edges2 = np.histogram(original_values, density=True, bins=resolution)
+            ghost_hist, _ = np.histogram(original_values, density=True, bins=resolution)
         
         hist, edges = np.histogram(values, density=True, bins=resolution)
         
@@ -138,7 +138,26 @@ class SplitLayout(Layout):
 class SplitLayoutPlus(Layout):
     def __init__(self, width, n):
         super().__init__(width)
-        self.plus_width = 60
+        self.plus_width = 64
         self.plot_width = math.floor((self.plot_width - self.plus_width) / n)
         self.plot_resolution = self.plot_width
         self.ncols = n + 1
+
+def plot_values(x_values, y_values, labels, title="Plot", x_title=" ", y_title=" ", base_value=None, base_value_label="baseline", width=1250):
+    p = figure(title=title, tools='', background_fill_color="#fafafa")
+    colors = ["coral", "cornflowerblue", "forestgreen", "gold", "deeppink", "lawngreen", "lightskyblue", "peru", "pink", "powderblue", "powderblue"]
+
+    for i in range(0, len(x_values)):
+        p.line(x_values[i], y_values[i], color=colors[i])
+        p.circle(x_values[i], y_values[i], color=colors[i], legend=labels[i])
+
+    p.xgrid.grid_line_color = None
+    p.ygrid.grid_line_color="white"
+    p.xaxis.axis_label = x_title
+    p.yaxis.axis_label = y_title
+    p.legend.location = "top_right"
+
+    p.width = width
+
+    output_file(title + " plot.html", title=title)
+    show(p)

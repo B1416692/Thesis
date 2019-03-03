@@ -55,10 +55,11 @@ class FF_KAF(nn.Module):
 class CNN(nn.Module):
     def __init__(self):
         super().__init__()
-        self.conv1 = nn.Conv2d(1, 12, kernel_size=5, stride=2, padding=2)
-        self.conv2 = nn.Conv2d(12, 12, kernel_size=5, stride=2, padding=2)
-        self.conv3 = nn.Conv2d(12, 10, kernel_size=5, stride=2, padding=2)
-        self.linear1 = nn.Linear(10, 10)
+        self.conv1 = nn.Conv2d(1, 14, kernel_size=5, stride=2, padding=2)
+        self.conv2 = nn.Conv2d(14, 14, kernel_size=5, stride=2, padding=2)
+        self.conv3 = nn.Conv2d(14, 12, kernel_size=5, stride=2, padding=2)
+        self.linear1 = nn.Linear(12, 12)
+        self.linear2 = nn.Linear(12, 10)
 
     def forward(self, x):
         x = x.view(-1, 1, 28, 28)
@@ -67,16 +68,18 @@ class CNN(nn.Module):
         y3 = F.relu(self.conv3(y2))
         y4 = F.avg_pool2d(y3, 4)
         y4 = y4.view(-1, y4.size(1))
-        y = F.log_softmax(self.linear1(y4))
+        y5 = self.linear1(y4)
+        y = F.log_softmax(self.linear2(y5), dim=0)
         return y
 
 class CNN_KAF(nn.Module):
     def __init__(self):
         super().__init__()
-        self.conv1 = nn.Conv2d(1, 12, kernel_size=5, stride=2, padding=2)
-        self.conv2 = nn.Conv2d(12, 12, kernel_size=5, stride=2, padding=2)
-        self.conv3 = nn.Conv2d(12, 10, kernel_size=5, stride=2, padding=2)
-        self.kaf1 = KAF(10)
+        self.conv1 = nn.Conv2d(1, 14, kernel_size=5, stride=2, padding=2)
+        self.conv2 = nn.Conv2d(14, 14, kernel_size=5, stride=2, padding=2)
+        self.conv3 = nn.Conv2d(14, 12, kernel_size=5, stride=2, padding=2)
+        self.kaf1 = KAF(12)
+        self.linear1 = nn.Linear(12, 10)
 
     def forward(self, x):
         x = x.view(-1, 1, 28, 28)
@@ -85,7 +88,8 @@ class CNN_KAF(nn.Module):
         y3 = F.relu(self.conv3(y2))
         y4 = F.avg_pool2d(y3, 4)
         y4 = y4.view(-1, y4.size(1))
-        y = F.log_softmax(self.kaf1(y4), dim=0)
+        y5 = self.kaf1(y4)
+        y = F.log_softmax(self.linear1(y5), dim=0)
         return y
 
 # - Train function
@@ -107,7 +111,7 @@ def fit(model, lr, opt, loss_func, batch_size, train_dl, valid_dl, epochs):
         
         model.eval()
         with torch.no_grad():
-            valid_loss = sum(loss_func(model(x), y) for x, y in valid_dl)
+            valid_loss = sum(loss_func(model(x), y) for x, y in valid_dl)  # HARDCODED FashionMNIST DATALOADER MAGIC
 
         print(epoch + 1, "\t", (valid_loss / len(valid_dl)).item())
 
@@ -122,22 +126,24 @@ import experiment_suite
 import quantization
 import data_visualization as dv
 
-LOAD_MODELS = False  # If False, models parameters will be saved after training. If True, models parameters will be loaded.
+LOAD_MODELS = True  # If False, models parameters will be saved after training. If True, models parameters will be loaded.
+QUANTIZATION_SIZES = [33]  # Values of element after quantization to be tested.
+experiment_suites = []
 
 # Fixed parameters
 batch_size = 64  # Batch size.
 train_dl, valid_dl = get_data(train_ds, valid_ds, batch_size)
-epochs = 5  # How many epochs to train for.
+epochs = 10  # How many epochs to train for.
 loss_func = F.nll_loss  # Loss function.
 
+SHOULD_OUTPUT_PLOTS = False
 LAYOUT_WIDTH = 1250  # Width of results plots.
-
-# TODO: Since torchvision.dataset.MNIST images get actually stored in 28 by 28 tensors instead of 728 tensors, FF networks must be refactored.
 
 # FF
 model = FF()  # Model.
 lr = 0.5  # Learning rate.
-opt = optim.SGD(model.parameters(), lr=lr, momentum=0.2)  # Optimizer.
+#opt = optim.SGD(model.parameters(), lr=lr, momentum=0.2)  # Optimizer.
+opt = optim.Adam(model.parameters(), weight_decay=1e-4)
 
 print("Model:", model)
 print("Number of parameters:", utilities.count_parameters(model))
@@ -154,16 +160,26 @@ else:
 experiments = []
 parameters_to_quantize = ["weight"]
 experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.NONE, 0))
-experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 31))
-experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 17))
-experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 9))
-suite = experiment_suite.QuantizationExperimentSuite(experiments, layout=dv.SplitLayoutPlus(LAYOUT_WIDTH, len(parameters_to_quantize)), id="FashionMNIST FF")
+for quantization_size in QUANTIZATION_SIZES:
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=2.0))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=1.7))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=1.5))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=1.3))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=1.2))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=1.1))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=1.0))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=0.9))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=0.8))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=0.7))
+suite = experiment_suite.QuantizationExperimentSuite(experiments, layout=dv.SplitLayoutPlus(LAYOUT_WIDTH, len(parameters_to_quantize)), id="FashionMNIST FF", output_plots=SHOULD_OUTPUT_PLOTS)
 suite.run()
+experiment_suites.append(suite)
 
 # FF_KAF
 model = FF_KAF()  # Model.
-lr = 0.1  # Learning rate.
-opt = optim.SGD(model.parameters(), lr=lr, momentum=0.1)  # Optimizer.
+lr = 0.5  # Learning rate.
+#opt = optim.SGD(model.parameters(), lr=lr, momentum=0.1)  # Optimizer.
+opt = optim.Adam(model.parameters(), weight_decay=1e-4)
 
 print("Model:", model)
 print("Number of parameters:", utilities.count_parameters(model))
@@ -180,16 +196,26 @@ else:
 experiments = []
 parameters_to_quantize = ["weight", "alpha"]
 experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.NONE, 0))
-experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 31))
-experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 17))
-experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 9))
-suite = experiment_suite.QuantizationExperimentSuite(experiments, layout=dv.SplitLayoutPlus(LAYOUT_WIDTH, len(parameters_to_quantize)), id="FashionMNIST FF_KAF")
+for quantization_size in QUANTIZATION_SIZES:
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=2.0))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=1.7))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=1.5))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=1.3))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=1.2))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=1.1))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=1.0))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=0.9))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=0.8))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=0.7))
+suite = experiment_suite.QuantizationExperimentSuite(experiments, layout=dv.SplitLayoutPlus(LAYOUT_WIDTH, len(parameters_to_quantize)), id="FashionMNIST FF_KAF", output_plots=SHOULD_OUTPUT_PLOTS)
 suite.run()
+experiment_suites.append(suite)
 
 # CNN
 model = CNN()  # Model.
-lr = 0.1  # Learning rate.
-opt = optim.SGD(model.parameters(), lr=lr, momentum=0.9)  # Optimizer.
+lr = 0.3  # Learning rate.
+#opt = optim.SGD(model.parameters(), lr=lr, momentum=0.9)  # Optimizer.
+opt = optim.Adam(model.parameters(), weight_decay=1e-4)
 
 print("Model:", model)
 print("Number of parameters:", utilities.count_parameters(model))
@@ -206,16 +232,26 @@ else:
 experiments = []
 parameters_to_quantize = ["weight"]
 experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.NONE, 0))
-experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 31))
-experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 17))
-experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 9))
-suite = experiment_suite.QuantizationExperimentSuite(experiments, layout=dv.SplitLayoutPlus(LAYOUT_WIDTH, len(parameters_to_quantize)), id="FashionMNIST CNN")
+for quantization_size in QUANTIZATION_SIZES:
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=2.0))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=1.7))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=1.5))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=1.3))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=1.2))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=1.1))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=1.0))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=0.9))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=0.8))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=0.7))
+suite = experiment_suite.QuantizationExperimentSuite(experiments, layout=dv.SplitLayoutPlus(LAYOUT_WIDTH, len(parameters_to_quantize)), id="FashionMNIST CNN", output_plots=SHOULD_OUTPUT_PLOTS)
 suite.run()
+experiment_suites.append(suite)
 
 # CNN_KAF
 model = CNN_KAF()
-lr = 0.1  # Learning rate.
-opt = optim.SGD(model.parameters(), lr=lr, momentum=0.9)  # Optimizer.
+lr = 0.3  # Learning rate.
+#opt = optim.SGD(model.parameters(), lr=lr, momentum=0.9)  # Optimizer.
+opt = optim.Adam(model.parameters(), weight_decay=1e-4)
 
 print("Model:", model)
 print("Number of parameters:", utilities.count_parameters(model))
@@ -232,8 +268,19 @@ else:
 experiments = []
 parameters_to_quantize = ["weight", "alpha"]
 experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.NONE, 0))
-experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 31))
-experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 17))
-experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.UNIFORM_A, 9))
-suite = experiment_suite.QuantizationExperimentSuite(experiments, layout=dv.SplitLayoutPlus(LAYOUT_WIDTH, len(parameters_to_quantize)), id="FashionMNIST CNN_KAF")
+for quantization_size in QUANTIZATION_SIZES:
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=2.0))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=1.7))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=1.5))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=1.3))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=1.2))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=1.1))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=1.0))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=0.9))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=0.8))
+    experiments.append(experiment_suite.QuantizationExperiment(model, valid_dl, parameters_to_quantize, quantization.LOGARITHMIC_A, quantization_size, base=0.7))
+suite = experiment_suite.QuantizationExperimentSuite(experiments, layout=dv.SplitLayoutPlus(LAYOUT_WIDTH, len(parameters_to_quantize)), id="FashionMNIST CNN_KAF", output_plots=SHOULD_OUTPUT_PLOTS)
 suite.run()
+experiment_suites.append(suite)
+
+experiment_suite.compare_accuracies(experiment_suites, title="FashionMNIST - Logarithmic quantization, various bases, 33 values")
